@@ -2,10 +2,11 @@
 
 set -euo pipefail
 
+launchd_label="sh.codex.approval-watcher"
 repo_dir="${0:A:h:h}"
-plist_template="$repo_dir/dev/launchd/com.jake.codex-approval-watcher.plist"
+plist_template="$repo_dir/dev/launchd/$launchd_label.plist"
 launch_agents_dir="$HOME/Library/LaunchAgents"
-installed_plist="$launch_agents_dir/com.jake.codex-approval-watcher.plist"
+installed_plist="$launch_agents_dir/$launchd_label.plist"
 binary_path="$repo_dir/target/release/codex-approval-watcher"
 manifest_path="$repo_dir/Cargo.toml"
 default_config_path="$repo_dir/config.toml"
@@ -67,7 +68,7 @@ install_service() {
   render_plist > "$installed_plist"
   launchctl bootout "gui/$(id -u)" "$installed_plist" >/dev/null 2>&1 || true
   launchctl bootstrap "gui/$(id -u)" "$installed_plist"
-  launchctl kickstart -k "gui/$(id -u)/com.jake.codex-approval-watcher"
+  launchctl kickstart -k "gui/$(id -u)/$launchd_label"
   echo "Installed watcher: $installed_plist"
 }
 
@@ -78,7 +79,7 @@ uninstall_service() {
 }
 
 status_service() {
-  if launchctl print "gui/$(id -u)/com.jake.codex-approval-watcher" >/dev/null 2>&1; then
+  if launchctl print "gui/$(id -u)/$launchd_label" >/dev/null 2>&1; then
     echo "loaded"
   else
     echo "not loaded"

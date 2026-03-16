@@ -1,5 +1,5 @@
 sessions_root = "~/.codex/sessions"
-state_file = "~/Library/Application Support/codex-approval-watcher/state/state.json"
+state_file = "~/.config/codex-approval-watcher/state.json"
 event_timeout_ms = 1000
 
 [notifications]

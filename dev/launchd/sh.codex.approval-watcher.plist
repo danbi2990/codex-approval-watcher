@@ -3,7 +3,7 @@
 <plist version="1.0">
 <dict>
   <key>Label</key>
-  <string>com.jake.codex-approval-watcher</string>
+  <string>sh.codex.approval-watcher</string>
 
   <key>ProgramArguments</key>
   <array>

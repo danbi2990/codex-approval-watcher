@@ -21,6 +21,12 @@ replace Codex's existing turn-complete notifications.
 
 Start from [`config.example.toml`](./config.example.toml).
 
+If you run the CLI without an explicit config path, it looks for:
+
+```text
+~/.config/codex-approval-watcher/config.toml
+```
+
 Current config fields:
 
 - `sessions_root`: directory containing Codex session JSONL files
@@ -72,10 +78,22 @@ cargo run -- validate-config ./config.toml
 Run the watcher:
 
 ```sh
+cargo run -- run
+```
+
+Or pass a config explicitly:
+
+```sh
 cargo run -- run ./config.toml
 ```
 
 Send one test notification:
+
+```sh
+cargo run -- test-notification
+```
+
+Or pass a config explicitly:
 
 ```sh
 cargo run -- test-notification ./config.toml
@@ -136,6 +154,11 @@ Typical release flow:
 6. Install with `brew install your-user/tap/codex-approval-watcher`.
 7. Start the service with `brew services start codex-approval-watcher`.
 
-The formula installs `config.homebrew.toml.example` into Homebrew's `etc`
-directory as `codex-approval-watcher.toml` on first install so the service has
-a stable default config file to use.
+The formula installs only `config.homebrew.toml.example` and copies it into:
+
+```text
+~/.config/codex-approval-watcher/config.toml
+```
+
+on first install, so the service and the CLI share the same default config
+location.

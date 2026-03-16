@@ -33,6 +33,7 @@ static RUNNING: AtomicBool = AtomicBool::new(true);
 const TOPOLOGY_RESCAN_INTERVAL: Duration = Duration::from_secs(5);
 const MAX_WATCHED_SESSION_FILES: usize = 16;
 const MAX_RECENT_SESSION_IDS: usize = 64;
+const DEFAULT_CONFIG_RELATIVE_PATH: &str = ".config/codex-approval-watcher/config.toml";
 
 #[derive(Debug, Default)]
 struct SessionTree {
@@ -192,7 +193,7 @@ fn main() -> Result<()> {
             let config_path = args
                 .next()
                 .map(PathBuf::from)
-                .unwrap_or_else(|| PathBuf::from("config.toml"));
+                .unwrap_or_else(default_config_path);
             let config = load_config(&config_path)?;
             validate_config(&config)?;
             run(&config)
@@ -201,7 +202,7 @@ fn main() -> Result<()> {
             let config_path = args
                 .next()
                 .map(PathBuf::from)
-                .unwrap_or_else(|| PathBuf::from("config.toml"));
+                .unwrap_or_else(default_config_path);
             let config = load_config(&config_path)?;
             validate_config(&config)?;
             test_notification(&config)
@@ -277,10 +278,23 @@ fn print_help() {
     println!("codex-approval-watcher");
     println!();
     println!("Commands:");
-    println!("  run [config-path]           Run the approval watcher");
-    println!("  test-notification [config]  Send one local approval notification");
+    println!(
+        "  run [config-path]           Run the approval watcher (default: ~/{DEFAULT_CONFIG_RELATIVE_PATH})"
+    );
+    println!(
+        "  test-notification [config]  Send one local approval notification (default: ~/{DEFAULT_CONFIG_RELATIVE_PATH})"
+    );
     println!("  print-example-config        Print a sample config.toml");
     println!("  validate-config <path>      Validate a config file");
+}
+
+fn default_config_path() -> PathBuf {
+    default_config_path_from_home(env::var_os("HOME").map(PathBuf::from))
+}
+
+fn default_config_path_from_home(home: Option<PathBuf>) -> PathBuf {
+    home.map(|dir| dir.join(DEFAULT_CONFIG_RELATIVE_PATH))
+        .unwrap_or_else(|| PathBuf::from("config.toml"))
 }
 
 fn run(config: &Config) -> Result<()> {
@@ -696,9 +710,9 @@ fn install_signal_handlers() {}
 mod tests {
     use super::{
         SessionFile, SessionTree, apply_watch_registration, build_test_event,
-        hydrate_missing_metadata, load_recent_session_ids, reconcile_scan_paths,
-        scan_session_tree, select_watched_files, session_id_from_rollout_path, validate_config,
-        vnode_watch_flags,
+        default_config_path_from_home, hydrate_missing_metadata, load_recent_session_ids,
+        reconcile_scan_paths, scan_session_tree, select_watched_files,
+        session_id_from_rollout_path, validate_config, vnode_watch_flags,
     };
     use crate::config::{Config, HookConfig, NotificationsConfig};
     use crate::models::{FileState, PersistedState};
@@ -755,6 +769,21 @@ mod tests {
         };
 
         assert!(validate_config(&config).is_err());
+    }
+
+    #[test]
+    fn default_config_path_prefers_home_config_directory() {
+        let path = default_config_path_from_home(Some(PathBuf::from("/Users/tester")));
+        assert_eq!(
+            path,
+            PathBuf::from("/Users/tester/.config/codex-approval-watcher/config.toml")
+        );
+    }
+
+    #[test]
+    fn default_config_path_falls_back_to_local_config_toml_without_home() {
+        let path = default_config_path_from_home(None);
+        assert_eq!(path, PathBuf::from("config.toml"));
     }
 
     #[test]

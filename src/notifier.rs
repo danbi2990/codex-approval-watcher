@@ -113,8 +113,8 @@ mod tests {
 
     #[test]
     fn extracts_project_name_from_cwd() {
-        assert_eq!(project_name("/Users/jake/project-x"), "project-x");
-        assert_eq!(project_name("/Users/jake/.codex"), ".codex");
+        assert_eq!(project_name("/Users/tester/project-x"), "project-x");
+        assert_eq!(project_name("/Users/tester/.codex"), ".codex");
         assert_eq!(project_name("/"), "");
     }
 
