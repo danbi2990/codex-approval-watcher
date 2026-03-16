@@ -154,11 +154,11 @@ Typical release flow:
 6. Install with `brew install your-user/tap/codex-approval-watcher`.
 7. Start the service with `brew services start codex-approval-watcher`.
 
-The formula installs only `config.homebrew.toml.example` and copies it into:
+The formula installs `config.homebrew.toml.example` into `pkgshare`. Copy it to:
 
 ```text
 ~/.config/codex-approval-watcher/config.toml
 ```
 
-on first install, so the service and the CLI share the same default config
-location.
+before starting the service, so the service and the CLI share the same default
+config location.

@@ -12,20 +12,22 @@ class CodexApprovalWatcher < Formula
     pkgshare.install "config.homebrew.toml.example"
   end
 
-  def post_install
-    config_dir = Pathname.new(File.expand_path("~/.config/codex-approval-watcher"))
-    config_dir.mkpath
-    config_path = config_dir/"config.toml"
-    return if config_path.exist?
-
-    cp pkgshare/"config.homebrew.toml.example", config_path
-  end
-
   service do
     run [opt_bin/"codex-approval-watcher", "run"]
     keep_alive true
     log_path var/"log/codex-approval-watcher.log"
     error_log_path var/"log/codex-approval-watcher.log"
+  end
+
+  def caveats
+    <<~EOS
+      Create a config file before starting the service:
+
+        mkdir -p ~/.config/codex-approval-watcher
+        cp #{opt_pkgshare}/config.homebrew.toml.example ~/.config/codex-approval-watcher/config.toml
+
+      Then edit ~/.config/codex-approval-watcher/config.toml to fit your setup.
+    EOS
   end
 
   test do
