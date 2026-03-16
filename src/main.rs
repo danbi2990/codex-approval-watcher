@@ -73,17 +73,23 @@ impl VnodeWatcher {
         })
     }
 
-    fn rebuild(&mut self, paths: &BTreeSet<String>) -> Result<()> {
+    fn rebuild(&mut self, paths: &BTreeSet<String>) -> Result<BTreeSet<String>> {
         let mut next = Self::new()?;
+        let mut registered_files = BTreeSet::new();
 
         for path in paths {
-            if let Err(error) = next.add_path(path) {
-                eprintln!("[codex-approval-watcher] failed to add file watch for {path}: {error}");
+            match next.add_path(path) {
+                Ok(()) => {
+                    registered_files.insert(path.clone());
+                }
+                Err(error) => {
+                    eprintln!("[codex-approval-watcher] failed to add file watch for {path}: {error}");
+                }
             }
         }
 
         *self = next;
-        Ok(())
+        Ok(registered_files)
     }
 
     fn add_path(&mut self, path: &str) -> Result<()> {
@@ -412,13 +418,12 @@ fn sync_watches(
     if desired_files == *watched_files {
         return Ok(BTreeSet::new());
     }
-    let added_watch_paths = desired_files
-        .difference(watched_files)
-        .cloned()
-        .collect::<BTreeSet<_>>();
-    watcher.rebuild(&desired_files)?;
-    *watched_files = desired_files;
-    Ok(added_watch_paths)
+    let registered_files = watcher.rebuild(&desired_files)?;
+    Ok(apply_watch_registration(
+        watched_files,
+        &desired_files,
+        &registered_files,
+    ))
 }
 
 fn sync_session_files(
@@ -565,6 +570,25 @@ fn reconcile_scan_paths(
     paths.into_iter().collect()
 }
 
+fn apply_watch_registration(
+    watched_files: &mut BTreeSet<String>,
+    desired_files: &BTreeSet<String>,
+    registered_files: &BTreeSet<String>,
+) -> BTreeSet<String> {
+    let added_watch_paths = registered_files
+        .difference(watched_files)
+        .cloned()
+        .collect::<BTreeSet<_>>();
+
+    if registered_files != desired_files {
+        *watched_files = registered_files.clone();
+    } else {
+        *watched_files = desired_files.clone();
+    }
+
+    added_watch_paths
+}
+
 fn session_id_from_rollout_path(path: &Path) -> Option<String> {
     let stem = path.file_stem()?.to_str()?;
     if stem.len() < 36 {
@@ -671,9 +695,10 @@ fn install_signal_handlers() {}
 #[cfg(test)]
 mod tests {
     use super::{
-        SessionFile, SessionTree, build_test_event, hydrate_missing_metadata,
-        load_recent_session_ids, reconcile_scan_paths, scan_session_tree,
-        select_watched_files, session_id_from_rollout_path, validate_config, vnode_watch_flags,
+        SessionFile, SessionTree, apply_watch_registration, build_test_event,
+        hydrate_missing_metadata, load_recent_session_ids, reconcile_scan_paths,
+        scan_session_tree, select_watched_files, session_id_from_rollout_path, validate_config,
+        vnode_watch_flags,
     };
     use crate::config::{Config, HookConfig, NotificationsConfig};
     use crate::models::{FileState, PersistedState};
@@ -903,6 +928,22 @@ mod tests {
 
         let paths = reconcile_scan_paths(&tree, &state, &BTreeSet::new());
         assert_eq!(paths, vec![PathBuf::from("/tmp/cold.jsonl")]);
+    }
+
+    #[test]
+    fn watch_registration_keeps_failed_paths_out_of_watched_set() {
+        let mut watched_files = BTreeSet::from(["/tmp/old.jsonl".to_string()]);
+        let desired_files = BTreeSet::from([
+            "/tmp/old.jsonl".to_string(),
+            "/tmp/new.jsonl".to_string(),
+        ]);
+        let registered_files = BTreeSet::from(["/tmp/old.jsonl".to_string()]);
+
+        let added = apply_watch_registration(&mut watched_files, &desired_files, &registered_files);
+
+        assert!(added.is_empty());
+        assert_eq!(watched_files, registered_files);
+        assert!(!watched_files.contains("/tmp/new.jsonl"));
     }
 
     #[test]
