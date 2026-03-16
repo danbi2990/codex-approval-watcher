@@ -14,6 +14,7 @@ class CodexApprovalWatcher < Formula
 
   service do
     run [opt_bin/"codex-approval-watcher", "run"]
+    environment_variables PATH: std_service_path_env
     keep_alive true
     log_path var/"log/codex-approval-watcher.log"
     error_log_path var/"log/codex-approval-watcher.log"
