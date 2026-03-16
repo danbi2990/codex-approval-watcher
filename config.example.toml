@@ -1,11 +1,11 @@
 sessions_root = "~/.codex/sessions"
 state_file = "./state/state.json"
-poll_interval_ms = 1000
+event_timeout_ms = 1000
 
-[[hooks]]
-name = "macos-notify"
-command = ["/path/to/notify-hook"]
-timeout_ms = 3000
+[notifications]
+enabled = true
+app = "Code"
+sound = "Sosumi"
 
 [[hooks]]
 name = "alfred-unread"

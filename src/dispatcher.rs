@@ -69,3 +69,51 @@ fn dispatch_to_hook(hook: &HookConfig, payload: &[u8], event: &ApprovalEvent) ->
         thread::sleep(Duration::from_millis(10));
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::dispatch_event;
+    use crate::{
+        config::HookConfig,
+        models::ApprovalEvent,
+    };
+    use std::{fs, os::unix::fs::PermissionsExt};
+
+    #[test]
+    fn dispatch_event_writes_json_to_hook_stdin() {
+        let temp = tempfile::tempdir().unwrap();
+        let output_path = temp.path().join("event.json");
+        let hook_path = temp.path().join("hook.sh");
+        fs::write(
+            &hook_path,
+            format!(
+                "#!/bin/zsh\ncat > {}\n",
+                output_path.display()
+            ),
+        )
+        .unwrap();
+        let mut permissions = fs::metadata(&hook_path).unwrap().permissions();
+        permissions.set_mode(0o755);
+        fs::set_permissions(&hook_path, permissions).unwrap();
+
+        let hook = HookConfig {
+            name: "capture".into(),
+            command: vec![hook_path.display().to_string()],
+            timeout_ms: 1000,
+        };
+        let event = ApprovalEvent {
+            event: "approval.requested",
+            session_id: "sess-1".into(),
+            cwd: "/tmp/project-a".into(),
+            timestamp: "2026-03-16T00:00:00Z".into(),
+            message: "Need approval".into(),
+            command: "printf hi > /tmp/a".into(),
+        };
+
+        dispatch_event(&[hook], &event).unwrap();
+
+        let written = fs::read_to_string(output_path).unwrap();
+        assert!(written.contains("\"event\":\"approval.requested\""));
+        assert!(written.contains("\"session_id\":\"sess-1\""));
+    }
+}

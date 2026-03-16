@@ -5,10 +5,22 @@ use std::{env, path::PathBuf};
 pub struct Config {
     pub sessions_root: PathBuf,
     pub state_file: PathBuf,
-    #[serde(default = "default_poll_interval_ms")]
-    pub poll_interval_ms: u64,
+    #[serde(default = "default_event_timeout_ms")]
+    pub event_timeout_ms: u64,
+    #[serde(default)]
+    pub notifications: NotificationsConfig,
     #[serde(default)]
     pub hooks: Vec<HookConfig>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct NotificationsConfig {
+    #[serde(default = "default_notifications_enabled")]
+    pub enabled: bool,
+    #[serde(default = "default_notification_app")]
+    pub app: String,
+    #[serde(default = "default_notification_sound")]
+    pub sound: String,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -19,12 +31,34 @@ pub struct HookConfig {
     pub timeout_ms: u64,
 }
 
-const fn default_poll_interval_ms() -> u64 {
+const fn default_event_timeout_ms() -> u64 {
     1000
 }
 
 const fn default_hook_timeout_ms() -> u64 {
     3000
+}
+
+const fn default_notifications_enabled() -> bool {
+    true
+}
+
+fn default_notification_app() -> String {
+    "Code".to_string()
+}
+
+fn default_notification_sound() -> String {
+    "Sosumi".to_string()
+}
+
+impl Default for NotificationsConfig {
+    fn default() -> Self {
+        Self {
+            enabled: default_notifications_enabled(),
+            app: default_notification_app(),
+            sound: default_notification_sound(),
+        }
+    }
 }
 
 pub fn expand_config_paths(mut config: Config) -> Config {

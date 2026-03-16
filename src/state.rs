@@ -64,3 +64,41 @@ pub fn bootstrap_existing_files(
     }
     state.initialized = true;
 }
+
+#[cfg(test)]
+mod tests {
+    use super::{bootstrap_existing_files, prune_deleted_files};
+    use crate::models::{FileState, PersistedState};
+    use std::collections::{BTreeMap, BTreeSet};
+
+    #[test]
+    fn bootstrap_marks_existing_files_initialized() {
+        let mut state = PersistedState::default();
+        bootstrap_existing_files(
+            &mut state,
+            &[("/tmp/a.jsonl".into(), 11, 42), ("/tmp/b.jsonl".into(), 22, 84)],
+        );
+
+        assert!(state.initialized);
+        assert_eq!(state.files["/tmp/a.jsonl"].offset, 42);
+        assert_eq!(state.files["/tmp/a.jsonl"].mtime_ns, 11);
+        assert_eq!(state.files["/tmp/b.jsonl"].size, 84);
+    }
+
+    #[test]
+    fn prune_deleted_files_removes_missing_entries() {
+        let mut state = PersistedState {
+            initialized: true,
+            files: BTreeMap::from([
+                ("/tmp/a.jsonl".into(), FileState::default()),
+                ("/tmp/b.jsonl".into(), FileState::default()),
+            ]),
+        };
+        let live = BTreeSet::from(["/tmp/b.jsonl".to_string()]);
+
+        prune_deleted_files(&mut state, &live);
+
+        assert!(!state.files.contains_key("/tmp/a.jsonl"));
+        assert!(state.files.contains_key("/tmp/b.jsonl"));
+    }
+}

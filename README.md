@@ -13,8 +13,10 @@ later without much churn.
 ## Scope
 
 - Watches `~/.codex/sessions/**/*.jsonl`
+- Uses `notify` for filesystem events instead of polling the tree on a timer
 - Detects approval requests by looking for function calls with
   `sandbox_permissions = "require_escalated"`
+- Sends a built-in macOS notification through `mac-notification-sys`
 - Emits a normalized `approval.requested` event to configured hooks
 - Leaves all consumer-specific behavior to hooks
 
@@ -29,8 +31,9 @@ Current config model:
 
 - `sessions_root`: directory containing Codex session JSONL files
 - `state_file`: local offset/metadata cache path
-- `poll_interval_ms`: polling interval for the initial implementation
-- `hooks`: list of commands that should receive `approval.requested` events
+- `event_timeout_ms`: watcher receive timeout used for a responsive shutdown loop
+- `notifications`: built-in local notification delivery settings
+- `hooks`: optional commands that should also receive `approval.requested` events
 
 Each hook receives one JSON document on stdin with this shape:
 
@@ -70,9 +73,6 @@ Run the watcher:
 ```sh
 cargo run --manifest-path /Users/jake/Downloads/Development/alfred-workflow/codex-approval-watcher/Cargo.toml -- run ./config.example.toml
 ```
-
-The current implementation uses polling with a persisted offset cache. That
-keeps the implementation simple while still avoiding re-reading unchanged files.
 
 ## Extraction Later
 

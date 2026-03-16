@@ -252,3 +252,100 @@ fn parse_json_line(line: &str) -> Option<Value> {
         _ => None,
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::{hydrate_session_metadata, process_file};
+    use crate::models::FileState;
+    use std::fs;
+
+    #[test]
+    fn hydrates_metadata_from_session_meta() {
+        let temp = tempfile::tempdir().unwrap();
+        let path = temp.path().join("session.jsonl");
+        fs::write(
+            &path,
+            "{\"type\":\"session_meta\",\"payload\":{\"id\":\"sess-1\",\"cwd\":\"/tmp/project-a\"}}\n",
+        )
+        .unwrap();
+
+        let mut state = FileState::default();
+        hydrate_session_metadata(&path, &mut state).unwrap();
+
+        assert_eq!(state.session_id.as_deref(), Some("sess-1"));
+        assert_eq!(state.cwd.as_deref(), Some("/tmp/project-a"));
+    }
+
+    #[test]
+    fn process_file_emits_approval_event() {
+        let temp = tempfile::tempdir().unwrap();
+        let path = temp.path().join("session.jsonl");
+        fs::write(
+            &path,
+            concat!(
+                "{\"timestamp\":\"2026-03-16T00:00:00Z\",\"type\":\"session_meta\",\"payload\":{\"id\":\"sess-1\",\"cwd\":\"/tmp/project-a\"}}\n",
+                "{\"timestamp\":\"2026-03-16T00:00:01Z\",\"type\":\"response_item\",\"payload\":{\"type\":\"function_call\",\"name\":\"exec_command\",\"arguments\":\"{\\\"cmd\\\":\\\"printf hi > /tmp/a\\\",\\\"justification\\\":\\\"Need approval\\\",\\\"sandbox_permissions\\\":\\\"require_escalated\\\"}\",\"call_id\":\"call-1\"}}\n"
+            ),
+        )
+        .unwrap();
+
+        let mut state = FileState::default();
+        let events = process_file(&path, &mut state).unwrap();
+
+        assert_eq!(events.len(), 1);
+        assert_eq!(events[0].event, "approval.requested");
+        assert_eq!(events[0].session_id, "sess-1");
+        assert_eq!(events[0].cwd, "/tmp/project-a");
+        assert_eq!(events[0].message, "Need approval");
+        assert_eq!(events[0].command, "printf hi > /tmp/a");
+    }
+
+    #[test]
+    fn process_file_dedupes_seen_call_ids() {
+        let temp = tempfile::tempdir().unwrap();
+        let path = temp.path().join("session.jsonl");
+        fs::write(
+            &path,
+            concat!(
+                "{\"timestamp\":\"2026-03-16T00:00:00Z\",\"type\":\"session_meta\",\"payload\":{\"id\":\"sess-1\",\"cwd\":\"/tmp/project-a\"}}\n",
+                "{\"timestamp\":\"2026-03-16T00:00:01Z\",\"type\":\"response_item\",\"payload\":{\"type\":\"function_call\",\"name\":\"exec_command\",\"arguments\":\"{\\\"cmd\\\":\\\"printf hi > /tmp/a\\\",\\\"justification\\\":\\\"Need approval\\\",\\\"sandbox_permissions\\\":\\\"require_escalated\\\"}\",\"call_id\":\"call-1\"}}\n"
+            ),
+        )
+        .unwrap();
+
+        let mut state = FileState::default();
+        let first = process_file(&path, &mut state).unwrap();
+        let second = process_file(&path, &mut state).unwrap();
+
+        assert_eq!(first.len(), 1);
+        assert!(second.is_empty());
+    }
+
+    #[test]
+    fn process_file_handles_truncation_and_new_event() {
+        let temp = tempfile::tempdir().unwrap();
+        let path = temp.path().join("session.jsonl");
+        fs::write(
+            &path,
+            "{\"timestamp\":\"2026-03-16T00:00:00Z\",\"type\":\"session_meta\",\"payload\":{\"id\":\"sess-1\",\"cwd\":\"/tmp/project-a\"}}\n",
+        )
+        .unwrap();
+
+        let mut state = FileState::default();
+        let first = process_file(&path, &mut state).unwrap();
+        assert!(first.is_empty());
+
+        fs::write(
+            &path,
+            concat!(
+                "{\"timestamp\":\"2026-03-16T00:00:02Z\",\"type\":\"session_meta\",\"payload\":{\"id\":\"sess-1\",\"cwd\":\"/tmp/project-a\"}}\n",
+                "{\"timestamp\":\"2026-03-16T00:00:03Z\",\"type\":\"response_item\",\"payload\":{\"type\":\"function_call\",\"name\":\"exec_command\",\"arguments\":\"{\\\"cmd\\\":\\\"printf hi > /tmp/b\\\",\\\"justification\\\":\\\"Need approval again\\\",\\\"sandbox_permissions\\\":\\\"require_escalated\\\"}\",\"call_id\":\"call-2\"}}\n"
+            ),
+        )
+        .unwrap();
+
+        let second = process_file(&path, &mut state).unwrap();
+        assert_eq!(second.len(), 1);
+        assert_eq!(second[0].command, "printf hi > /tmp/b");
+    }
+}
