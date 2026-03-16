@@ -7,6 +7,6 @@ enabled = true
 sound = "Sosumi"
 
 [[hooks]]
-name = "alfred-unread"
-command = ["/path/to/vscode-switcher-hook"]
+name = "approval-hook"
+command = ["/path/to/approval-hook"]
 timeout_ms = 3000

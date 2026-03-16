@@ -1,2 +1,5 @@
 target/
 state/
+dev/*.local
+dev/tmp/
+dev/state/

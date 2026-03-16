@@ -2,23 +2,35 @@
 
 set -euo pipefail
 
-repo_dir="/Users/jake/Downloads/Development/alfred-workflow/codex-approval-watcher"
-plist_template="$repo_dir/launchd/com.jake.codex-approval-watcher.plist"
+repo_dir="${0:A:h:h}"
+plist_template="$repo_dir/dev/launchd/com.jake.codex-approval-watcher.plist"
 launch_agents_dir="$HOME/Library/LaunchAgents"
 installed_plist="$launch_agents_dir/com.jake.codex-approval-watcher.plist"
 binary_path="$repo_dir/target/release/codex-approval-watcher"
-config_path="$repo_dir/config.vscode-switcher.toml"
 manifest_path="$repo_dir/Cargo.toml"
+default_config_path="$repo_dir/config.toml"
+
+resolve_path() {
+  local raw_path="$1"
+  echo "${raw_path:A}"
+}
+
+config_path="${CONFIG_PATH:-${2:-$default_config_path}}"
+config_path="$(resolve_path "$config_path")"
 
 usage() {
   cat <<EOF
-Usage: ./install_service.sh [install|uninstall|restart|status|build]
+Usage: ./dev/install_service.sh [install|uninstall|restart|status|build] [config-path]
 
 install   Build the release binary, install the launchd service, and start it
 build     Build the release binary only
 uninstall Remove and stop the launchd watcher service
 restart   Rebuild and reload the launchd watcher service
 status    Show whether the launchd watcher service is loaded
+
+Defaults:
+  config-path defaults to ./config.toml
+  override with a second argument or CONFIG_PATH=/path/to/config.toml
 EOF
 }
 
@@ -33,7 +45,23 @@ build_binary() {
   cargo build --release --offline --manifest-path "$manifest_path"
 }
 
+require_config() {
+  if [[ ! -f "$config_path" ]]; then
+    cat >&2 <<EOF
+missing config file: $config_path
+
+Create one from config.example.toml first, for example:
+  cp "$repo_dir/config.example.toml" "$default_config_path"
+
+Or pass an explicit config path:
+  ./dev/install_service.sh install ./config.vscode-switcher.toml
+EOF
+    exit 1
+  fi
+}
+
 install_service() {
+  require_config
   build_binary
   mkdir -p "$launch_agents_dir"
   render_plist > "$installed_plist"

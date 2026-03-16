@@ -2,7 +2,7 @@
 
 set -euo pipefail
 
-repo_dir="/Users/jake/Downloads/Development/alfred-workflow/codex-approval-watcher"
+repo_dir="${0:A:h}"
 fixture_dir="$repo_dir/fixtures/self-test"
 work_dir="$(mktemp -d "${TMPDIR:-/tmp}/codex-approval-selftest.XXXXXX")"
 binary_path="$repo_dir/target/debug/codex-approval-watcher"

@@ -1,44 +1,35 @@
 # codex-approval-watcher
 
-`codex-approval-watcher` is a small Rust service that fills a specific gap in
-Codex: approval requests are not currently surfaced through the built-in
-`notify`/`hooks` flow in this environment, so the watcher reads Codex session
-logs and emits a synthetic `approval.requested` event to registered hooks.
+`codex-approval-watcher` is a small Rust service for macOS that watches Codex
+session logs and emits a synthetic `approval.requested` event when it sees an
+approval prompt. It exists for setups where approval requests are not surfaced
+through the normal `notify` or `hooks` flow.
 
-This project lives as a sibling of `vscode-switcher` inside the current Git
-repo so both can evolve together for now. It is intentionally structured as an
-independent Rust crate so it can be extracted into its own public repository
-later without much churn.
-
-## Scope
+## What It Does
 
 - Watches `~/.codex/sessions/**/*.jsonl`
-- Uses `kqueue` directory notifications on macOS and rescans changed session files
-- Detects approval requests by looking for function calls with
-  `sandbox_permissions = "require_escalated"`
-- Sends a local macOS notification via `terminal-notifier` when available,
+- Uses `kqueue` notifications plus periodic reconciliation to avoid missed events
+- Detects approval prompts from tool calls that request escalated permissions
+- Sends a local macOS notification with `terminal-notifier` when available,
   otherwise falls back to `osascript`
-- Emits a normalized `approval.requested` event to configured hooks
-- Leaves all consumer-specific behavior to hooks
+- Forwards normalized `approval.requested` events to optional hooks
 
-`codex-approval-watcher` is intentionally approval-specific. It does not try to
-replace Codex's existing `turn completed` notifications.
+This project is intentionally focused on approval prompts. It does not try to
+replace Codex's existing turn-complete notifications.
 
 ## Configuration
 
-See [config.example.toml](/Users/jake/Downloads/Development/alfred-workflow/codex-approval-watcher/config.example.toml) for the expected shape.
-For the local `vscode-switcher` integration in this repo, see
-[config.vscode-switcher.toml](/Users/jake/Downloads/Development/alfred-workflow/codex-approval-watcher/config.vscode-switcher.toml).
+Start from [`config.example.toml`](./config.example.toml).
 
-Current config model:
+Current config fields:
 
 - `sessions_root`: directory containing Codex session JSONL files
-- `state_file`: local offset/metadata cache path
-- `event_timeout_ms`: watcher receive timeout used for a responsive shutdown loop
-- `notifications`: built-in local notification delivery settings
-- `hooks`: optional commands that should also receive `approval.requested` events
+- `state_file`: persisted offset and metadata cache path
+- `event_timeout_ms`: watcher receive timeout used for responsive shutdown
+- `notifications`: built-in local notification settings
+- `hooks`: optional commands that also receive `approval.requested` events
 
-Each hook receives one JSON document on stdin with this shape:
+Each hook receives one JSON document on stdin:
 
 ```json
 {
@@ -51,74 +42,99 @@ Each hook receives one JSON document on stdin with this shape:
 }
 ```
 
-## Development
+[`config.homebrew.toml.example`](./config.homebrew.toml.example) shows a
+service-friendly default layout for Homebrew installs.
+
+[`config.vscode-switcher.toml`](./config.vscode-switcher.toml) is an optional
+example for wiring approval events into the author's Alfred workflow setup.
+
+## Usage
 
 Validate the crate:
 
 ```sh
-cargo check --manifest-path /Users/jake/Downloads/Development/alfred-workflow/codex-approval-watcher/Cargo.toml
+cargo check
 ```
 
 Print the bundled example config:
 
 ```sh
-cargo run --manifest-path /Users/jake/Downloads/Development/alfred-workflow/codex-approval-watcher/Cargo.toml -- print-example-config
+cargo run -- print-example-config
 ```
 
 Validate a config file:
 
 ```sh
-cargo run --manifest-path /Users/jake/Downloads/Development/alfred-workflow/codex-approval-watcher/Cargo.toml -- validate-config ./config.example.toml
+cargo run -- validate-config ./config.toml
 ```
 
 Run the watcher:
 
 ```sh
-cargo run --manifest-path /Users/jake/Downloads/Development/alfred-workflow/codex-approval-watcher/Cargo.toml -- run ./config.example.toml
+cargo run -- run ./config.toml
 ```
 
-Run the local self-test loop without `launchd` or a real approval prompt:
+Send one test notification:
 
 ```sh
-zsh /Users/jake/Downloads/Development/alfred-workflow/codex-approval-watcher/self_test.sh
+cargo run -- test-notification ./config.toml
 ```
 
-That script copies fixture session files into a temporary `codex-home`, starts
-the watcher as a child process, appends a synthetic approval line to the
-fixture rollout JSONL, and verifies that the configured hook receives an
-`approval.requested` event.
+## Local Development
 
-Build and install the local `launchd` service for this repo:
+Run the test suite:
 
 ```sh
-./install_service.sh
+cargo test
 ```
 
-## Homebrew Draft
-
-A draft Homebrew formula lives at
-[homebrew/codex-approval-watcher.rb](/Users/jake/Downloads/Development/alfred-workflow/codex-approval-watcher/homebrew/codex-approval-watcher.rb).
-It is meant for the future standalone repository, not this monorepo tarball.
-
-To publish through a personal tap later:
-
-1. Split `codex-approval-watcher` into its own Git repository.
-2. Create a tagged GitHub release such as `v0.1.0`.
-3. Replace the placeholder `homepage`, `url`, and `sha256` in the formula.
-4. Copy the formula into a tap repository such as `homebrew-tap/Formula/`.
-5. Install with `brew install your-user/tap/codex-approval-watcher`.
-6. Start the service with `brew services start codex-approval-watcher`.
-
-The formula installs
-[config.homebrew.toml.example](/Users/jake/Downloads/Development/alfred-workflow/codex-approval-watcher/config.homebrew.toml.example)
-into Homebrew's `etc` directory as `codex-approval-watcher.toml` on first
-install, so the service has a stable default config file to use.
-
-## Extraction Later
-
-If this should become a standalone public repository later, split it out with a
-history-preserving command like:
+Run the end-to-end self-test without `launchd`:
 
 ```sh
-git subtree split --prefix=codex-approval-watcher -b split-codex-approval-watcher
+./self_test.sh
 ```
+
+That script copies fixture session files into a temporary Codex home, starts
+the watcher as a child process, appends a synthetic approval line, and verifies
+that the configured hook receives an `approval.requested` event.
+
+## Dev Helper
+
+[`dev/install_service.sh`](./dev/install_service.sh) installs a repo-local
+`launchd` agent for development and personal use.
+
+By default it expects `./config.toml` in the repository root. You can also pass
+a config path explicitly:
+
+```sh
+cp config.example.toml config.toml
+./dev/install_service.sh install
+./dev/install_service.sh restart ./config.vscode-switcher.toml
+```
+
+Supported commands:
+
+- `install`
+- `restart`
+- `uninstall`
+- `status`
+- `build`
+
+## Homebrew
+
+A draft formula lives at
+[`homebrew/codex-approval-watcher.rb`](./homebrew/codex-approval-watcher.rb).
+
+Typical release flow:
+
+1. Push this repository to GitHub.
+2. Create a tag such as `v0.1.0`.
+3. Build the release tarball and compute its `sha256`.
+4. Replace the placeholder `homepage`, `url`, and `sha256` in the formula.
+5. Copy the formula into a personal tap such as `your-user/homebrew-tap`.
+6. Install with `brew install your-user/tap/codex-approval-watcher`.
+7. Start the service with `brew services start codex-approval-watcher`.
+
+The formula installs `config.homebrew.toml.example` into Homebrew's `etc`
+directory as `codex-approval-watcher.toml` on first install so the service has
+a stable default config file to use.
