@@ -94,6 +94,26 @@ Build and install the local `launchd` service for this repo:
 ./install_service.sh
 ```
 
+## Homebrew Draft
+
+A draft Homebrew formula lives at
+[homebrew/codex-approval-watcher.rb](/Users/jake/Downloads/Development/alfred-workflow/codex-approval-watcher/homebrew/codex-approval-watcher.rb).
+It is meant for the future standalone repository, not this monorepo tarball.
+
+To publish through a personal tap later:
+
+1. Split `codex-approval-watcher` into its own Git repository.
+2. Create a tagged GitHub release such as `v0.1.0`.
+3. Replace the placeholder `homepage`, `url`, and `sha256` in the formula.
+4. Copy the formula into a tap repository such as `homebrew-tap/Formula/`.
+5. Install with `brew install your-user/tap/codex-approval-watcher`.
+6. Start the service with `brew services start codex-approval-watcher`.
+
+The formula installs
+[config.homebrew.toml.example](/Users/jake/Downloads/Development/alfred-workflow/codex-approval-watcher/config.homebrew.toml.example)
+into Homebrew's `etc` directory as `codex-approval-watcher.toml` on first
+install, so the service has a stable default config file to use.
+
 ## Extraction Later
 
 If this should become a standalone public repository later, split it out with a

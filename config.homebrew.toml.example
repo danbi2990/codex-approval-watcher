@@ -1,0 +1,13 @@
+sessions_root = "~/.codex/sessions"
+state_file = "~/Library/Application Support/codex-approval-watcher/state/state.json"
+event_timeout_ms = 1000
+
+[notifications]
+enabled = true
+sound = "Sosumi"
+
+# Add hooks if you want approval.requested events forwarded elsewhere.
+# [[hooks]]
+# name = "example"
+# command = ["/path/to/hook"]
+# timeout_ms = 3000
