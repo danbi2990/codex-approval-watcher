@@ -45,8 +45,9 @@ Each hook receives one JSON document on stdin:
 [`config.homebrew.toml.example`](./config.homebrew.toml.example) shows a
 service-friendly default layout for Homebrew installs.
 
-[`config.vscode-switcher.toml`](./config.vscode-switcher.toml) is an optional
-example for wiring approval events into the author's Alfred workflow setup.
+[`examples/alfred-vscode-switcher.example.toml`](./examples/alfred-vscode-switcher.example.toml)
+is an optional example for wiring approval events into an Alfred
+`vscode-switcher` workflow setup.
 
 ## Usage
 
@@ -109,7 +110,7 @@ a config path explicitly:
 ```sh
 cp config.example.toml config.toml
 ./dev/install_service.sh install
-./dev/install_service.sh restart ./config.vscode-switcher.toml
+./dev/install_service.sh restart ./examples/alfred-vscode-switcher.example.toml
 ```
 
 Supported commands:

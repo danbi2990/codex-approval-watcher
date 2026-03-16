@@ -54,7 +54,7 @@ Create one from config.example.toml first, for example:
   cp "$repo_dir/config.example.toml" "$default_config_path"
 
 Or pass an explicit config path:
-  ./dev/install_service.sh install ./config.vscode-switcher.toml
+  ./dev/install_service.sh install ./examples/alfred-vscode-switcher.example.toml
 EOF
     exit 1
   fi
