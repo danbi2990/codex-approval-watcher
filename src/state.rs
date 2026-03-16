@@ -1,10 +1,6 @@
 use crate::models::{FileState, PersistedState};
 use anyhow::{Context, Result};
-use std::{
-    collections::{BTreeMap, BTreeSet},
-    fs,
-    path::Path,
-};
+use std::{collections::BTreeSet, fs, path::Path};
 
 pub fn load_state(path: &Path) -> PersistedState {
     let raw = match fs::read_to_string(path) {
@@ -17,9 +13,8 @@ pub fn load_state(path: &Path) -> PersistedState {
 
 pub fn save_state(path: &Path, state: &PersistedState) -> Result<()> {
     if let Some(parent) = path.parent() {
-        fs::create_dir_all(parent).with_context(|| {
-            format!("failed to create state directory: {}", parent.display())
-        })?;
+        fs::create_dir_all(parent)
+            .with_context(|| format!("failed to create state directory: {}", parent.display()))?;
     }
 
     let temp_path = path.with_extension("tmp");
@@ -36,13 +31,10 @@ pub fn save_state(path: &Path, state: &PersistedState) -> Result<()> {
     Ok(())
 }
 
-pub fn prune_deleted_files(state: &mut PersistedState, live_paths: &BTreeSet<String>) {
-    state.files = state
-        .files
-        .iter()
-        .filter(|(path, _)| live_paths.contains(*path))
-        .map(|(path, file_state)| (path.clone(), file_state.clone()))
-        .collect::<BTreeMap<_, _>>();
+pub fn prune_deleted_files(state: &mut PersistedState, live_paths: &BTreeSet<String>) -> bool {
+    let initial_len = state.files.len();
+    state.files.retain(|path, _| live_paths.contains(path));
+    state.files.len() != initial_len
 }
 
 pub fn bootstrap_existing_files(
@@ -76,7 +68,10 @@ mod tests {
         let mut state = PersistedState::default();
         bootstrap_existing_files(
             &mut state,
-            &[("/tmp/a.jsonl".into(), 11, 42), ("/tmp/b.jsonl".into(), 22, 84)],
+            &[
+                ("/tmp/a.jsonl".into(), 11, 42),
+                ("/tmp/b.jsonl".into(), 22, 84),
+            ],
         );
 
         assert!(state.initialized);
@@ -96,8 +91,9 @@ mod tests {
         };
         let live = BTreeSet::from(["/tmp/b.jsonl".to_string()]);
 
-        prune_deleted_files(&mut state, &live);
+        let changed = prune_deleted_files(&mut state, &live);
 
+        assert!(changed);
         assert!(!state.files.contains_key("/tmp/a.jsonl"));
         assert!(state.files.contains_key("/tmp/b.jsonl"));
     }

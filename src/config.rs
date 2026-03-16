@@ -1,5 +1,8 @@
 use serde::Deserialize;
-use std::{env, path::PathBuf};
+use std::{
+    env,
+    path::{Path, PathBuf},
+};
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct Config {
@@ -17,8 +20,6 @@ pub struct Config {
 pub struct NotificationsConfig {
     #[serde(default = "default_notifications_enabled")]
     pub enabled: bool,
-    #[serde(default = "default_notification_app")]
-    pub app: String,
     #[serde(default = "default_notification_sound")]
     pub sound: String,
 }
@@ -43,10 +44,6 @@ const fn default_notifications_enabled() -> bool {
     true
 }
 
-fn default_notification_app() -> String {
-    "Code".to_string()
-}
-
 fn default_notification_sound() -> String {
     "Sosumi".to_string()
 }
@@ -55,7 +52,6 @@ impl Default for NotificationsConfig {
     fn default() -> Self {
         Self {
             enabled: default_notifications_enabled(),
-            app: default_notification_app(),
             sound: default_notification_sound(),
         }
     }
@@ -75,19 +71,19 @@ pub fn expand_config_paths(mut config: Config) -> Config {
     config
 }
 
-fn expand_path(path: &PathBuf) -> PathBuf {
+fn expand_path(path: &Path) -> PathBuf {
     let raw = path.to_string_lossy();
     if raw == "~" {
-        return home_dir().unwrap_or_else(|| path.clone());
+        return home_dir().unwrap_or_else(|| path.to_path_buf());
     }
 
-    if let Some(stripped) = raw.strip_prefix("~/") {
-        if let Some(home) = home_dir() {
-            return home.join(stripped);
-        }
+    if let Some(stripped) = raw.strip_prefix("~/")
+        && let Some(home) = home_dir()
+    {
+        return home.join(stripped);
     }
 
-    path.clone()
+    path.to_path_buf()
 }
 
 fn home_dir() -> Option<PathBuf> {

@@ -73,10 +73,7 @@ fn dispatch_to_hook(hook: &HookConfig, payload: &[u8], event: &ApprovalEvent) ->
 #[cfg(test)]
 mod tests {
     use super::dispatch_event;
-    use crate::{
-        config::HookConfig,
-        models::ApprovalEvent,
-    };
+    use crate::{config::HookConfig, models::ApprovalEvent};
     use std::{fs, os::unix::fs::PermissionsExt};
 
     #[test]
@@ -86,10 +83,7 @@ mod tests {
         let hook_path = temp.path().join("hook.sh");
         fs::write(
             &hook_path,
-            format!(
-                "#!/bin/zsh\ncat > {}\n",
-                output_path.display()
-            ),
+            format!("#!/bin/zsh\ncat > {}\n", output_path.display()),
         )
         .unwrap();
         let mut permissions = fs::metadata(&hook_path).unwrap().permissions();

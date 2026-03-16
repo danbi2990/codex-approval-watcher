@@ -1,11 +1,13 @@
-use crate::models::{ApprovalEvent, FileState};
-use anyhow::{Context, Result};
-use serde_json::Value;
 use std::{
     fs::File,
     io::{BufRead, BufReader, Seek, SeekFrom},
     path::Path,
 };
+
+use anyhow::{Context, Result};
+use serde_json::Value;
+
+use crate::models::{ApprovalEvent, FileState};
 
 const MAX_SEEN_CALLS: usize = 100;
 
@@ -23,10 +25,7 @@ pub fn current_file_signature(path: &Path) -> Result<(u64, u64)> {
 }
 
 pub fn hydrate_session_metadata(path: &Path, file_state: &mut FileState) -> Result<()> {
-    if file_state
-        .cwd
-        .as_ref()
-        .is_some_and(|cwd| !cwd.is_empty())
+    if file_state.cwd.as_ref().is_some_and(|cwd| !cwd.is_empty())
         && file_state
             .session_id
             .as_ref()
@@ -81,7 +80,11 @@ pub fn hydrate_session_metadata(path: &Path, file_state: &mut FileState) -> Resu
 }
 
 pub fn process_file(path: &Path, file_state: &mut FileState) -> Result<Vec<ApprovalEvent>> {
-    let (mtime_ns, file_size) = current_file_signature(path)?;
+    let (mtime_ns, file_size) = match current_file_signature(path) {
+        Ok(signature) => signature,
+        Err(error) if is_not_found_error(&error) => return Ok(Vec::new()),
+        Err(error) => return Err(error),
+    };
     let metadata_missing = file_state.cwd.as_deref().unwrap_or("").is_empty()
         || file_state.session_id.as_deref().unwrap_or("").is_empty();
 
@@ -89,15 +92,23 @@ pub fn process_file(path: &Path, file_state: &mut FileState) -> Result<Vec<Appro
         return Ok(Vec::new());
     }
 
-    hydrate_session_metadata(path, file_state)?;
+    if let Err(error) = hydrate_session_metadata(path, file_state) {
+        if is_not_found_error(&error) {
+            return Ok(Vec::new());
+        }
+        return Err(error);
+    }
 
     let mut offset = file_state.offset;
     if file_size < offset {
         offset = 0;
     }
 
-    let mut file =
-        File::open(path).with_context(|| format!("failed to open {}", path.display()))?;
+    let mut file = match File::open(path).with_context(|| format!("failed to open {}", path.display())) {
+        Ok(file) => file,
+        Err(error) if is_not_found_error(&error) => return Ok(Vec::new()),
+        Err(error) => return Err(error),
+    };
     file.seek(SeekFrom::Start(offset))
         .with_context(|| format!("failed to seek {}", path.display()))?;
     let mut reader = BufReader::new(file);
@@ -123,6 +134,13 @@ pub fn process_file(path: &Path, file_state: &mut FileState) -> Result<Vec<Appro
     file_state.size = file_size;
 
     Ok(events)
+}
+
+fn is_not_found_error(error: &anyhow::Error) -> bool {
+    error
+        .chain()
+        .filter_map(|cause| cause.downcast_ref::<std::io::Error>())
+        .any(|io_error| io_error.kind() == std::io::ErrorKind::NotFound)
 }
 
 fn handle_entry(line: &str, file_state: &mut FileState) -> Result<Option<ApprovalEvent>> {
@@ -173,11 +191,7 @@ fn handle_entry(line: &str, file_state: &mut FileState) -> Result<Option<Approva
         Err(_) => return Ok(None),
     };
 
-    if arguments
-        .get("sandbox_permissions")
-        .and_then(Value::as_str)
-        != Some("require_escalated")
-    {
+    if arguments.get("sandbox_permissions").and_then(Value::as_str) != Some("require_escalated") {
         return Ok(None);
     }
 
@@ -236,14 +250,16 @@ fn handle_entry(line: &str, file_state: &mut FileState) -> Result<Option<Approva
         file_state.seen_calls.drain(0..drain_count);
     }
 
-    Ok(Some(ApprovalEvent {
+    let event = ApprovalEvent {
         event: "approval.requested",
         session_id,
         cwd,
         timestamp,
         message,
         command,
-    }))
+    };
+
+    Ok(Some(event))
 }
 
 fn parse_json_line(line: &str) -> Option<Value> {
@@ -255,9 +271,10 @@ fn parse_json_line(line: &str) -> Option<Value> {
 
 #[cfg(test)]
 mod tests {
+    use std::fs;
+
     use super::{hydrate_session_metadata, process_file};
     use crate::models::FileState;
-    use std::fs;
 
     #[test]
     fn hydrates_metadata_from_session_meta() {
@@ -347,5 +364,28 @@ mod tests {
         let second = process_file(&path, &mut state).unwrap();
         assert_eq!(second.len(), 1);
         assert_eq!(second[0].command, "printf hi > /tmp/b");
+    }
+
+    #[test]
+    fn process_file_treats_missing_file_as_empty() {
+        let temp = tempfile::tempdir().unwrap();
+        let path = temp.path().join("session.jsonl");
+        fs::write(
+            &path,
+            "{\"timestamp\":\"2026-03-16T00:00:00Z\",\"type\":\"session_meta\",\"payload\":{\"id\":\"sess-1\",\"cwd\":\"/tmp/project-a\"}}\n",
+        )
+        .unwrap();
+
+        let mut state = FileState::default();
+        let _ = process_file(&path, &mut state).unwrap();
+
+        fs::remove_file(&path).unwrap();
+
+        let result = process_file(&path, &mut state);
+        assert!(
+            result.is_ok(),
+            "missing watched file should be treated as an empty update"
+        );
+        assert!(result.unwrap().is_empty());
     }
 }

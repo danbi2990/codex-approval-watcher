@@ -1,0 +1,12 @@
+sessions_root = "~/.codex/sessions"
+state_file = "/Users/jake/Downloads/Development/alfred-workflow/codex-approval-watcher/state/state.json"
+event_timeout_ms = 1000
+
+[notifications]
+enabled = true
+sound = "Sosumi"
+
+[[hooks]]
+name = "vscode-switcher-unread"
+command = ["/Users/jake/Downloads/Development/alfred-workflow/vscode-switcher/approval_event_hook.sh"]
+timeout_ms = 3000

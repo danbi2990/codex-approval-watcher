@@ -4,7 +4,6 @@ event_timeout_ms = 1000
 
 [notifications]
 enabled = true
-app = "Code"
 sound = "Sosumi"
 
 [[hooks]]

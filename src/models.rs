@@ -19,7 +19,7 @@ pub struct PersistedState {
     pub files: BTreeMap<String, FileState>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
 pub struct FileState {
     pub offset: u64,
     pub cwd: Option<String>,
@@ -28,17 +28,4 @@ pub struct FileState {
     #[serde(default)]
     pub seen_calls: Vec<String>,
     pub size: u64,
-}
-
-impl Default for FileState {
-    fn default() -> Self {
-        Self {
-            offset: 0,
-            cwd: None,
-            mtime_ns: 0,
-            session_id: None,
-            seen_calls: Vec::new(),
-            size: 0,
-        }
-    }
 }

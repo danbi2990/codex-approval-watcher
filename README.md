@@ -13,10 +13,11 @@ later without much churn.
 ## Scope
 
 - Watches `~/.codex/sessions/**/*.jsonl`
-- Uses `notify` for filesystem events instead of polling the tree on a timer
+- Uses `kqueue` directory notifications on macOS and rescans changed session files
 - Detects approval requests by looking for function calls with
   `sandbox_permissions = "require_escalated"`
-- Sends a built-in macOS notification through `mac-notification-sys`
+- Sends a local macOS notification via `terminal-notifier` when available,
+  otherwise falls back to `osascript`
 - Emits a normalized `approval.requested` event to configured hooks
 - Leaves all consumer-specific behavior to hooks
 
@@ -26,6 +27,8 @@ replace Codex's existing `turn completed` notifications.
 ## Configuration
 
 See [config.example.toml](/Users/jake/Downloads/Development/alfred-workflow/codex-approval-watcher/config.example.toml) for the expected shape.
+For the local `vscode-switcher` integration in this repo, see
+[config.vscode-switcher.toml](/Users/jake/Downloads/Development/alfred-workflow/codex-approval-watcher/config.vscode-switcher.toml).
 
 Current config model:
 
@@ -72,6 +75,23 @@ Run the watcher:
 
 ```sh
 cargo run --manifest-path /Users/jake/Downloads/Development/alfred-workflow/codex-approval-watcher/Cargo.toml -- run ./config.example.toml
+```
+
+Run the local self-test loop without `launchd` or a real approval prompt:
+
+```sh
+zsh /Users/jake/Downloads/Development/alfred-workflow/codex-approval-watcher/self_test.sh
+```
+
+That script copies fixture session files into a temporary `codex-home`, starts
+the watcher as a child process, appends a synthetic approval line to the
+fixture rollout JSONL, and verifies that the configured hook receives an
+`approval.requested` event.
+
+Build and install the local `launchd` service for this repo:
+
+```sh
+./install_service.sh
 ```
 
 ## Extraction Later
