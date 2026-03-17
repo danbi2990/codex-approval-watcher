@@ -1,8 +1,8 @@
 class CodexApprovalWatcher < Formula
   desc "Watch Codex session logs and emit approval.requested events"
   homepage "https://github.com/danbi2990/codex-approval-watcher"
-  url "https://github.com/danbi2990/codex-approval-watcher/archive/refs/tags/v0.1.0.tar.gz"
-  sha256 "f7f8924ff84388425c777ec6cec04af8d6cd3281a26f1dffb11a9bc743595ec1"
+  url "https://github.com/danbi2990/codex-approval-watcher/archive/refs/tags/v0.1.1.tar.gz"
+  sha256 "ca2e22a556cab3c30fcb6d6dd1cf08770dc63a1ad94711d33ebd47288875062a"
   license "MIT"
 
   depends_on "rust" => :build
