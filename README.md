@@ -80,6 +80,10 @@ Run the watcher:
 cargo run -- run
 ```
 
+If `~/.config/codex-approval-watcher/config.toml` does not exist yet, the
+watcher creates it automatically from the bundled Homebrew-friendly template on
+first run.
+
 Or pass a config explicitly:
 
 ```sh
@@ -159,11 +163,16 @@ Typical release flow:
 6. Install with `brew install your-user/tap/codex-approval-watcher`.
 7. Start the service with `brew services start codex-approval-watcher`.
 
-The formula installs `config.homebrew.toml.example` into `pkgshare`. Copy it to:
+The formula installs `config.homebrew.toml.example` into `pkgshare`, but you do
+not need to copy it manually. On first run the watcher creates:
 
 ```text
 ~/.config/codex-approval-watcher/config.toml
 ```
 
-before starting the service, so the service and the CLI share the same default
-config location.
+automatically, so the service and the CLI share the same default config
+location. If you want to inspect the template first, see:
+
+```text
+/opt/homebrew/opt/codex-approval-watcher/share/codex-approval-watcher/config.homebrew.toml.example
+```

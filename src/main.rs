@@ -29,6 +29,7 @@ use state::{bootstrap_existing_files, load_state, prune_deleted_files, save_stat
 use walkdir::WalkDir;
 
 const EXAMPLE_CONFIG: &str = include_str!("../config.example.toml");
+const DEFAULT_HOME_CONFIG_TEMPLATE: &str = include_str!("../config.homebrew.toml.example");
 static RUNNING: AtomicBool = AtomicBool::new(true);
 const TOPOLOGY_RESCAN_INTERVAL: Duration = Duration::from_secs(5);
 const MAX_WATCHED_SESSION_FILES: usize = 16;
@@ -196,7 +197,7 @@ fn main() -> Result<()> {
                 .next()
                 .map(PathBuf::from)
                 .unwrap_or_else(default_config_path);
-            let config = load_config(&config_path)?;
+            let config = load_runtime_config(&config_path)?;
             validate_config(&config)?;
             run(&config)
         }
@@ -205,7 +206,7 @@ fn main() -> Result<()> {
                 .next()
                 .map(PathBuf::from)
                 .unwrap_or_else(default_config_path);
-            let config = load_config(&config_path)?;
+            let config = load_runtime_config(&config_path)?;
             validate_config(&config)?;
             test_notification(&config)
         }
@@ -214,7 +215,7 @@ fn main() -> Result<()> {
                 .next()
                 .map(PathBuf::from)
                 .unwrap_or_else(default_config_path);
-            let config = load_config(&config_path)?;
+            let config = load_runtime_config(&config_path)?;
             validate_config(&config)?;
             doctor_notifications(&config)
         }
@@ -251,6 +252,40 @@ fn load_config(path: &Path) -> Result<Config> {
     let config: Config = toml::from_str(&raw)
         .with_context(|| format!("failed to parse config: {}", path.display()))?;
     Ok(expand_config_paths(config))
+}
+
+fn load_runtime_config(path: &Path) -> Result<Config> {
+    let default_path = default_config_path();
+    ensure_default_config_exists(path, &default_path, DEFAULT_HOME_CONFIG_TEMPLATE)?;
+    load_config(path)
+}
+
+fn ensure_default_config_exists(path: &Path, default_path: &Path, template: &str) -> Result<bool> {
+    if path != default_path || path.exists() {
+        return Ok(false);
+    }
+
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent)
+            .with_context(|| format!("failed to create config directory: {}", parent.display()))?;
+    }
+
+    match fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(path)
+    {
+        Ok(mut file) => {
+            use std::io::Write;
+
+            file.write_all(template.as_bytes())
+                .with_context(|| format!("failed to write default config: {}", path.display()))?;
+            Ok(true)
+        }
+        Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => Ok(false),
+        Err(error) => Err(error)
+            .with_context(|| format!("failed to create default config: {}", path.display())),
+    }
 }
 
 fn validate_config(config: &Config) -> Result<()> {
@@ -745,8 +780,8 @@ fn install_signal_handlers() {}
 mod tests {
     use super::{
         SessionFile, SessionTree, apply_watch_registration, build_test_event,
-        default_config_path_from_home, hydrate_missing_metadata, load_recent_session_ids,
-        reconcile_scan_paths, scan_session_tree, select_watched_files,
+        default_config_path_from_home, ensure_default_config_exists, hydrate_missing_metadata,
+        load_recent_session_ids, reconcile_scan_paths, scan_session_tree, select_watched_files,
         session_id_from_rollout_path, validate_config, vnode_watch_flags,
     };
     use crate::config::{Config, HookConfig, NotificationsConfig};
@@ -754,7 +789,7 @@ mod tests {
     use std::{
         collections::{BTreeMap, BTreeSet},
         fs,
-        path::PathBuf,
+        path::{Path, PathBuf},
     };
 
     #[test]
@@ -1016,5 +1051,60 @@ mod tests {
         assert_eq!(event.cwd, "/tmp/project-x");
         assert_eq!(event.command, "echo ok");
         assert_eq!(event.session_id, "test-session");
+    }
+
+    #[test]
+    fn default_config_bootstrap_creates_missing_default_file() {
+        let temp = tempfile::tempdir().unwrap();
+        let config_path = temp
+            .path()
+            .join(".config/codex-approval-watcher/config.toml");
+        let created = ensure_default_config_exists(
+            &config_path,
+            &config_path,
+            "sessions_root = \"~/.codex/sessions\"\nstate_file = \"~/.config/codex-approval-watcher/state.json\"\n",
+        )
+        .unwrap();
+
+        assert!(created);
+        assert_eq!(
+            fs::read_to_string(&config_path).unwrap(),
+            "sessions_root = \"~/.codex/sessions\"\nstate_file = \"~/.config/codex-approval-watcher/state.json\"\n"
+        );
+    }
+
+    #[test]
+    fn default_config_bootstrap_does_not_overwrite_existing_file() {
+        let temp = tempfile::tempdir().unwrap();
+        let config_path = temp
+            .path()
+            .join(".config/codex-approval-watcher/config.toml");
+        fs::create_dir_all(config_path.parent().unwrap()).unwrap();
+        fs::write(&config_path, "existing = true\n").unwrap();
+
+        let created =
+            ensure_default_config_exists(&config_path, &config_path, "existing = false\n").unwrap();
+
+        assert!(!created);
+        assert_eq!(
+            fs::read_to_string(&config_path).unwrap(),
+            "existing = true\n"
+        );
+    }
+
+    #[test]
+    fn default_config_bootstrap_skips_non_default_paths() {
+        let temp = tempfile::tempdir().unwrap();
+        let config_path = temp.path().join("custom.toml");
+        let default_path = temp
+            .path()
+            .join(".config/codex-approval-watcher/config.toml");
+
+        let created =
+            ensure_default_config_exists(&config_path, &default_path, "generated = true\n")
+                .unwrap();
+
+        assert!(!created);
+        assert!(!Path::new(&config_path).exists());
     }
 }
