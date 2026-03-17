@@ -10,8 +10,7 @@ through the normal `notify` or `hooks` flow.
 - Watches `~/.codex/sessions/**/*.jsonl`
 - Uses `kqueue` notifications plus periodic reconciliation to avoid missed events
 - Detects approval prompts from tool calls that request escalated permissions
-- Sends a local macOS notification with `terminal-notifier` when available,
-  otherwise falls back to `osascript`
+- Sends a local macOS notification with `osascript`
 - Forwards normalized `approval.requested` events to optional hooks
 
 This project is intentionally focused on approval prompts. It does not try to
@@ -97,6 +96,12 @@ Or pass a config explicitly:
 
 ```sh
 cargo run -- test-notification ./config.toml
+```
+
+Send a notification and verify delivery markers from macOS unified logs:
+
+```sh
+cargo run -- doctor-notifications
 ```
 
 ## Local Development

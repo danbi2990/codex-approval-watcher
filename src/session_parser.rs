@@ -104,11 +104,12 @@ pub fn process_file(path: &Path, file_state: &mut FileState) -> Result<Vec<Appro
         offset = 0;
     }
 
-    let mut file = match File::open(path).with_context(|| format!("failed to open {}", path.display())) {
-        Ok(file) => file,
-        Err(error) if is_not_found_error(&error) => return Ok(Vec::new()),
-        Err(error) => return Err(error),
-    };
+    let mut file =
+        match File::open(path).with_context(|| format!("failed to open {}", path.display())) {
+            Ok(file) => file,
+            Err(error) if is_not_found_error(&error) => return Ok(Vec::new()),
+            Err(error) => return Err(error),
+        };
     file.seek(SeekFrom::Start(offset))
         .with_context(|| format!("failed to seek {}", path.display()))?;
     let mut reader = BufReader::new(file);

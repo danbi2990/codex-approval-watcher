@@ -22,7 +22,7 @@ use config::{Config, expand_config_paths};
 use dispatcher::dispatch_event;
 use libc::{self, c_int};
 use models::{ApprovalEvent, PersistedState};
-use notifier::notify_approval;
+use notifier::{doctor_notification, notify_approval};
 use serde::Deserialize;
 use session_parser::{current_file_signature, hydrate_session_metadata, process_file};
 use state::{bootstrap_existing_files, load_state, prune_deleted_files, save_state};
@@ -84,7 +84,9 @@ impl VnodeWatcher {
                     registered_files.insert(path.clone());
                 }
                 Err(error) => {
-                    eprintln!("[codex-approval-watcher] failed to add file watch for {path}: {error}");
+                    eprintln!(
+                        "[codex-approval-watcher] failed to add file watch for {path}: {error}"
+                    );
                 }
             }
         }
@@ -207,6 +209,15 @@ fn main() -> Result<()> {
             validate_config(&config)?;
             test_notification(&config)
         }
+        Some("doctor-notifications") => {
+            let config_path = args
+                .next()
+                .map(PathBuf::from)
+                .unwrap_or_else(default_config_path);
+            let config = load_config(&config_path)?;
+            validate_config(&config)?;
+            doctor_notifications(&config)
+        }
         Some("print-example-config") => {
             print!("{EXAMPLE_CONFIG}");
             Ok(())
@@ -284,6 +295,9 @@ fn print_help() {
     println!(
         "  test-notification [config]  Send one local approval notification (default: ~/{DEFAULT_CONFIG_RELATIVE_PATH})"
     );
+    println!(
+        "  doctor-notifications [config]  Send and verify one local notification (default: ~/{DEFAULT_CONFIG_RELATIVE_PATH})"
+    );
     println!("  print-example-config        Print a sample config.toml");
     println!("  validate-config <path>      Validate a config file");
 }
@@ -314,13 +328,7 @@ fn run(config: &Config) -> Result<()> {
         let bootstrap_meta = initial_tree
             .files
             .iter()
-            .map(|file| {
-                (
-                    file.path.display().to_string(),
-                    file.mtime_ns,
-                    file.size,
-                )
-            })
+            .map(|file| (file.path.display().to_string(), file.mtime_ns, file.size))
             .collect::<Vec<_>>();
         bootstrap_existing_files(&mut state, &bootstrap_meta);
         state_dirty = true;
@@ -646,6 +654,33 @@ fn test_notification(config: &Config) -> Result<()> {
     notify_approval(&config.notifications, &event)
 }
 
+fn doctor_notifications(config: &Config) -> Result<()> {
+    let token = format!("doctor-{}", std::process::id());
+    let event = crate::models::ApprovalEvent {
+        message: format!("Notification doctor probe {token}"),
+        ..build_test_event(
+            env::current_dir().unwrap_or_else(|_| PathBuf::from(".")),
+            "codex-approval-watcher doctor-notifications",
+        )
+    };
+
+    let report = doctor_notification(&config.notifications, &event);
+    println!("{}", serde_json::to_string_pretty(&report)?);
+
+    if report.verified {
+        Ok(())
+    } else {
+        bail!(
+            "{}",
+            report
+                .dispatch
+                .error
+                .or(report.verification.error)
+                .unwrap_or_else(|| "notification verification failed".into())
+        )
+    }
+}
+
 fn build_test_event(cwd: PathBuf, command: &str) -> crate::models::ApprovalEvent {
     crate::models::ApprovalEvent {
         event: "approval.requested",
@@ -962,10 +997,8 @@ mod tests {
     #[test]
     fn watch_registration_keeps_failed_paths_out_of_watched_set() {
         let mut watched_files = BTreeSet::from(["/tmp/old.jsonl".to_string()]);
-        let desired_files = BTreeSet::from([
-            "/tmp/old.jsonl".to_string(),
-            "/tmp/new.jsonl".to_string(),
-        ]);
+        let desired_files =
+            BTreeSet::from(["/tmp/old.jsonl".to_string(), "/tmp/new.jsonl".to_string()]);
         let registered_files = BTreeSet::from(["/tmp/old.jsonl".to_string()]);
 
         let added = apply_watch_registration(&mut watched_files, &desired_files, &registered_files);
