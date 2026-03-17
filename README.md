@@ -16,15 +16,50 @@ through the normal `notify` or `hooks` flow.
 This project is intentionally focused on approval prompts. It does not try to
 replace Codex's existing turn-complete notifications.
 
-## Configuration
+## Homebrew
 
-Start from [`config.example.toml`](./config.example.toml).
+Install from the published tap:
 
-If you run the CLI without an explicit config path, it looks for:
+```sh
+brew tap danbi2990/tap
+brew install codex-approval-watcher
+```
+
+Start the background service:
+
+```sh
+brew services start codex-approval-watcher
+```
+
+Verify notifications after install:
+
+```sh
+/opt/homebrew/bin/codex-approval-watcher doctor-notifications
+```
+
+On first run the watcher creates:
 
 ```text
 ~/.config/codex-approval-watcher/config.toml
 ```
+
+automatically. If you want to inspect the template first, see:
+
+```text
+/opt/homebrew/opt/codex-approval-watcher/share/codex-approval-watcher/config.homebrew.toml.example
+```
+
+## Configuration
+
+If you run the CLI without an explicit config path, it uses:
+
+```text
+~/.config/codex-approval-watcher/config.toml
+```
+
+Use [`config.example.toml`](./config.example.toml) for local/manual runs, or
+inspect [`config.homebrew.toml.example`](./config.homebrew.toml.example) for the
+Homebrew-oriented default layout.
 
 Current config fields:
 
@@ -46,13 +81,6 @@ Each hook receives one JSON document on stdin:
   "command": "printf 'hi' > /tmp/example.txt"
 }
 ```
-
-[`config.homebrew.toml.example`](./config.homebrew.toml.example) shows a
-service-friendly default layout for Homebrew installs.
-
-[`examples/alfred-vscode-switcher.example.toml`](./examples/alfred-vscode-switcher.example.toml)
-is an optional example for wiring approval events into an Alfred
-`vscode-switcher` workflow setup.
 
 ## Usage
 
@@ -79,10 +107,6 @@ Run the watcher:
 ```sh
 cargo run -- run
 ```
-
-If `~/.config/codex-approval-watcher/config.toml` does not exist yet, the
-watcher creates it automatically from the bundled Homebrew-friendly template on
-first run.
 
 Or pass a config explicitly:
 
@@ -148,12 +172,12 @@ Supported commands:
 - `status`
 - `build`
 
-## Homebrew
+## Homebrew Packaging
 
-A draft formula lives at
+The tap formula is based on:
 [`homebrew/codex-approval-watcher.rb`](./homebrew/codex-approval-watcher.rb).
 
-Typical release flow:
+Typical maintainer release flow:
 
 1. Push this repository to GitHub.
 2. Create a tag such as `v0.1.0`.
@@ -162,17 +186,3 @@ Typical release flow:
 5. Copy the formula into a personal tap such as `your-user/homebrew-tap`.
 6. Install with `brew install your-user/tap/codex-approval-watcher`.
 7. Start the service with `brew services start codex-approval-watcher`.
-
-The formula installs `config.homebrew.toml.example` into `pkgshare`, but you do
-not need to copy it manually. On first run the watcher creates:
-
-```text
-~/.config/codex-approval-watcher/config.toml
-```
-
-automatically, so the service and the CLI share the same default config
-location. If you want to inspect the template first, see:
-
-```text
-/opt/homebrew/opt/codex-approval-watcher/share/codex-approval-watcher/config.homebrew.toml.example
-```
