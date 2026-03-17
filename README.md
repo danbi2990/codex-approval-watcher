@@ -134,11 +134,15 @@ cargo run -- doctor-notifications
 
 ## Local Development
 
-Run the test suite:
+Verification gate for changes in this repository:
 
 ```sh
 cargo test
+cargo clippy --all-targets --all-features -- -W clippy::pedantic
 ```
+
+`cargo clippy` should be run with `clippy::pedantic` enabled for local
+verification before shipping changes.
 
 Run the end-to-end self-test without `launchd`:
 

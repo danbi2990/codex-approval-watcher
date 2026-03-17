@@ -1,4 +1,4 @@
-use std::{process::Command, thread, time::Duration};
+use std::{fmt::Write as _, process::Command, thread, time::Duration};
 
 use anyhow::{Result, bail};
 use serde::Serialize;
@@ -92,11 +92,11 @@ pub fn doctor_notification(
             stderr: String::new(),
             required_markers: REQUIRED_LOG_MARKERS
                 .iter()
-                .map(|marker| marker.to_string())
+                .map(std::string::ToString::to_string)
                 .collect(),
             missing_markers: REQUIRED_LOG_MARKERS
                 .iter()
-                .map(|marker| marker.to_string())
+                .map(std::string::ToString::to_string)
                 .collect(),
             matched_lines: Vec::new(),
             recent_lines: Vec::new(),
@@ -206,11 +206,11 @@ fn applescript_notification(title: &str, subtitle: &str, body: &str, sound: &str
     );
 
     if !subtitle.trim().is_empty() {
-        script.push_str(&format!(" subtitle \"{}\"", escape_applescript(subtitle)));
+        let _ = write!(script, " subtitle \"{}\"", escape_applescript(subtitle));
     }
 
     if !sound.trim().is_empty() {
-        script.push_str(&format!(" sound name \"{}\"", escape_applescript(sound)));
+        let _ = write!(script, " sound name \"{}\"", escape_applescript(sound));
     }
 
     script
@@ -251,11 +251,11 @@ fn verify_notification_logs() -> NotificationLogVerification {
             stderr: String::new(),
             required_markers: REQUIRED_LOG_MARKERS
                 .iter()
-                .map(|marker| marker.to_string())
+                .map(std::string::ToString::to_string)
                 .collect(),
             missing_markers: REQUIRED_LOG_MARKERS
                 .iter()
-                .map(|marker| marker.to_string())
+                .map(std::string::ToString::to_string)
                 .collect(),
             matched_lines: Vec::new(),
             recent_lines: Vec::new(),
@@ -305,7 +305,7 @@ fn analyze_log_output(
                 || line.contains("Presenting <NotificationRecord")
                 || line.contains("Connection ")
         })
-        .map(|line| line.to_string())
+        .map(std::string::ToString::to_string)
         .take(40)
         .collect::<Vec<_>>();
 
@@ -330,7 +330,7 @@ fn analyze_log_output(
         stderr,
         required_markers: REQUIRED_LOG_MARKERS
             .iter()
-            .map(|marker| marker.to_string())
+            .map(std::string::ToString::to_string)
             .collect(),
         missing_markers,
         matched_lines,
@@ -386,7 +386,7 @@ mod tests {
             report.required_markers,
             REQUIRED_LOG_MARKERS
                 .iter()
-                .map(|marker| marker.to_string())
+                .map(std::string::ToString::to_string)
                 .collect::<Vec<_>>()
         );
     }

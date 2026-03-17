@@ -3,9 +3,8 @@ use anyhow::{Context, Result};
 use std::{collections::BTreeSet, fs, path::Path};
 
 pub fn load_state(path: &Path) -> PersistedState {
-    let raw = match fs::read_to_string(path) {
-        Ok(raw) => raw,
-        Err(_) => return PersistedState::default(),
+    let Ok(raw) = fs::read_to_string(path) else {
+        return PersistedState::default();
     };
 
     serde_json::from_str::<PersistedState>(&raw).unwrap_or_default()

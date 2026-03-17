@@ -19,8 +19,9 @@ pub fn current_file_signature(path: &Path) -> Result<(u64, u64)> {
         .modified()
         .ok()
         .and_then(|time| time.duration_since(std::time::UNIX_EPOCH).ok())
-        .map(|duration| duration.as_nanos() as u64)
-        .unwrap_or(0);
+        .map_or(0, |duration| {
+            u64::try_from(duration.as_nanos()).unwrap_or(u64::MAX)
+        });
     Ok((mtime_ns, metadata.len()))
 }
 
@@ -125,7 +126,7 @@ pub fn process_file(path: &Path, file_state: &mut FileState) -> Result<Vec<Appro
             break;
         }
 
-        if let Some(event) = handle_entry(line.trim_end_matches('\n'), file_state)? {
+        if let Some(event) = handle_entry(line.trim_end_matches('\n'), file_state) {
             events.push(event);
         }
     }
@@ -144,85 +145,90 @@ fn is_not_found_error(error: &anyhow::Error) -> bool {
         .any(|io_error| io_error.kind() == std::io::ErrorKind::NotFound)
 }
 
-fn handle_entry(line: &str, file_state: &mut FileState) -> Result<Option<ApprovalEvent>> {
-    let Some(entry) = parse_json_line(line) else {
-        return Ok(None);
-    };
+fn update_file_state_from_session_meta(
+    payload: &serde_json::Map<String, Value>,
+    file_state: &mut FileState,
+) {
+    if let Some(cwd) = payload
+        .get("cwd")
+        .and_then(Value::as_str)
+        .filter(|value| !value.is_empty())
+    {
+        file_state.cwd = Some(cwd.to_string());
+    }
+
+    if let Some(session_id) = payload
+        .get("id")
+        .and_then(Value::as_str)
+        .filter(|value| !value.is_empty())
+    {
+        file_state.session_id = Some(session_id.to_string());
+    }
+}
+
+fn fallback_call_id(
+    entry: &Value,
+    payload: &serde_json::Map<String, Value>,
+    arguments: &Value,
+) -> String {
+    format!(
+        "{}:{}:{}",
+        entry.get("timestamp").and_then(Value::as_str).unwrap_or(""),
+        payload.get("name").and_then(Value::as_str).unwrap_or(""),
+        arguments.get("cmd").and_then(Value::as_str).unwrap_or("")
+    )
+}
+
+fn handle_entry(line: &str, file_state: &mut FileState) -> Option<ApprovalEvent> {
+    let entry = parse_json_line(line)?;
 
     let entry_type = entry.get("type").and_then(Value::as_str).unwrap_or("");
     let payload = entry.get("payload");
 
     if entry_type == "session_meta" {
         if let Some(payload) = payload.and_then(Value::as_object) {
-            if let Some(cwd) = payload
-                .get("cwd")
-                .and_then(Value::as_str)
-                .filter(|value| !value.is_empty())
-            {
-                file_state.cwd = Some(cwd.to_string());
-            }
-            if let Some(session_id) = payload
-                .get("id")
-                .and_then(Value::as_str)
-                .filter(|value| !value.is_empty())
-            {
-                file_state.session_id = Some(session_id.to_string());
-            }
+            update_file_state_from_session_meta(payload, file_state);
         }
-        return Ok(None);
+        return None;
     }
 
     if entry_type != "response_item" {
-        return Ok(None);
+        return None;
     }
 
-    let Some(payload) = payload.and_then(Value::as_object) else {
-        return Ok(None);
-    };
+    let payload = payload.and_then(Value::as_object)?;
 
     if payload.get("type").and_then(Value::as_str) != Some("function_call") {
-        return Ok(None);
+        return None;
     }
 
-    let Some(arguments_raw) = payload.get("arguments").and_then(Value::as_str) else {
-        return Ok(None);
-    };
+    let arguments_raw = payload.get("arguments").and_then(Value::as_str)?;
     let arguments: Value = match serde_json::from_str(arguments_raw) {
         Ok(value) => value,
-        Err(_) => return Ok(None),
+        Err(_) => return None,
     };
 
     if arguments.get("sandbox_permissions").and_then(Value::as_str) != Some("require_escalated") {
-        return Ok(None);
+        return None;
     }
 
-    let Some(cwd) = file_state.cwd.clone().filter(|value| !value.is_empty()) else {
-        return Ok(None);
-    };
-    let Some(session_id) = file_state
+    let cwd = file_state.cwd.clone().filter(|value| !value.is_empty())?;
+    let session_id = file_state
         .session_id
         .clone()
-        .filter(|value| !value.is_empty())
-    else {
-        return Ok(None);
-    };
+        .filter(|value| !value.is_empty())?;
 
     let call_id = payload
         .get("call_id")
         .and_then(Value::as_str)
         .filter(|value| !value.is_empty())
-        .map(ToOwned::to_owned)
-        .unwrap_or_else(|| {
-            format!(
-                "{}:{}:{}",
-                entry.get("timestamp").and_then(Value::as_str).unwrap_or(""),
-                payload.get("name").and_then(Value::as_str).unwrap_or(""),
-                arguments.get("cmd").and_then(Value::as_str).unwrap_or("")
-            )
-        });
+        .map_or_else(
+            || fallback_call_id(&entry, payload, &arguments),
+            ToOwned::to_owned,
+        );
 
     if file_state.seen_calls.iter().any(|seen| seen == &call_id) {
-        return Ok(None);
+        return None;
     }
 
     let message = arguments
@@ -260,7 +266,7 @@ fn handle_entry(line: &str, file_state: &mut FileState) -> Result<Option<Approva
         command,
     };
 
-    Ok(Some(event))
+    Some(event)
 }
 
 fn parse_json_line(line: &str) -> Option<Value> {

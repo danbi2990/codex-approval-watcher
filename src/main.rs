@@ -100,9 +100,11 @@ impl VnodeWatcher {
         let file =
             fs::File::open(path).with_context(|| format!("failed to open watched file: {path}"))?;
         let fd = file.into_raw_fd();
+        let ident =
+            usize::try_from(fd).with_context(|| format!("file descriptor out of range: {fd}"))?;
 
         let event = libc::kevent {
-            ident: fd as _,
+            ident,
             filter: libc::EVFILT_VNODE,
             flags: (libc::EV_ADD | libc::EV_ENABLE | libc::EV_CLEAR) as _,
             fflags: vnode_watch_flags(),
@@ -113,7 +115,7 @@ impl VnodeWatcher {
         let ret = unsafe {
             libc::kevent(
                 self.queue,
-                &event,
+                &raw const event,
                 1,
                 std::ptr::null_mut(),
                 0,
@@ -143,11 +145,20 @@ impl VnodeWatcher {
             udata: std::ptr::null_mut(),
         };
         let timeout = libc::timespec {
-            tv_sec: timeout.as_secs() as _,
-            tv_nsec: timeout.subsec_nanos() as _,
+            tv_sec: libc::time_t::try_from(timeout.as_secs()).unwrap_or(libc::time_t::MAX),
+            tv_nsec: timeout.subsec_nanos().into(),
         };
 
-        let ret = unsafe { libc::kevent(self.queue, std::ptr::null(), 0, &mut event, 1, &timeout) };
+        let ret = unsafe {
+            libc::kevent(
+                self.queue,
+                std::ptr::null(),
+                0,
+                &raw mut event,
+                1,
+                &raw const timeout,
+            )
+        };
 
         match ret {
             -1 => {
@@ -161,14 +172,16 @@ impl VnodeWatcher {
             0 => Ok(None),
             _ => {
                 if event.flags & libc::EV_ERROR != 0 {
-                    let errno = event.data as i32;
+                    let errno =
+                        i32::try_from(event.data).context("kqueue error code out of range")?;
                     if errno != 0 {
                         return Err(std::io::Error::from_raw_os_error(errno))
                             .context("kqueue delivered an error event");
                     }
                 }
 
-                let fd = event.ident as c_int;
+                let fd =
+                    c_int::try_from(event.ident).context("watched file descriptor out of range")?;
                 Ok(self.paths_by_fd.get(&fd).map(PathBuf::from))
             }
         }
@@ -193,28 +206,19 @@ fn main() -> Result<()> {
 
     match args.next().as_deref() {
         Some("run") => {
-            let config_path = args
-                .next()
-                .map(PathBuf::from)
-                .unwrap_or_else(default_config_path);
+            let config_path = args.next().map_or_else(default_config_path, PathBuf::from);
             let config = load_runtime_config(&config_path)?;
             validate_config(&config)?;
             run(&config)
         }
         Some("test-notification") => {
-            let config_path = args
-                .next()
-                .map(PathBuf::from)
-                .unwrap_or_else(default_config_path);
+            let config_path = args.next().map_or_else(default_config_path, PathBuf::from);
             let config = load_runtime_config(&config_path)?;
             validate_config(&config)?;
             test_notification(&config)
         }
         Some("doctor-notifications") => {
-            let config_path = args
-                .next()
-                .map(PathBuf::from)
-                .unwrap_or_else(default_config_path);
+            let config_path = args.next().map_or_else(default_config_path, PathBuf::from);
             let config = load_runtime_config(&config_path)?;
             validate_config(&config)?;
             doctor_notifications(&config)
@@ -232,16 +236,12 @@ fn main() -> Result<()> {
             println!("Config is valid: {}", Path::new(&config_path).display());
             Ok(())
         }
-        Some("--help") | Some("-h") => {
+        Some("--help" | "-h") | None => {
             print_help();
             Ok(())
         }
         Some(command) => {
             bail!("unknown command: {command}");
-        }
-        None => {
-            print_help();
-            Ok(())
         }
     }
 }
@@ -342,8 +342,10 @@ fn default_config_path() -> PathBuf {
 }
 
 fn default_config_path_from_home(home: Option<PathBuf>) -> PathBuf {
-    home.map(|dir| dir.join(DEFAULT_CONFIG_RELATIVE_PATH))
-        .unwrap_or_else(|| PathBuf::from("config.toml"))
+    home.map_or_else(
+        || PathBuf::from("config.toml"),
+        |dir| dir.join(DEFAULT_CONFIG_RELATIVE_PATH),
+    )
 }
 
 fn run(config: &Config) -> Result<()> {
@@ -508,10 +510,7 @@ fn scan_session_tree(root: &Path) -> Result<SessionTree> {
     }
 
     let mut tree = SessionTree::default();
-    for entry in WalkDir::new(root)
-        .into_iter()
-        .filter_map(|entry| entry.ok())
-    {
+    for entry in WalkDir::new(root).into_iter().filter_map(Result::ok) {
         let path = entry.path();
         if entry.file_type().is_file()
             && path.extension().and_then(|ext| ext.to_str()) == Some("jsonl")
@@ -530,10 +529,10 @@ fn scan_session_tree(root: &Path) -> Result<SessionTree> {
 }
 
 fn session_index_path(sessions_root: &Path) -> PathBuf {
-    sessions_root
-        .parent()
-        .map(|parent| parent.join("session_index.jsonl"))
-        .unwrap_or_else(|| PathBuf::from("session_index.jsonl"))
+    sessions_root.parent().map_or_else(
+        || PathBuf::from("session_index.jsonl"),
+        |parent| parent.join("session_index.jsonl"),
+    )
 }
 
 fn load_recent_session_ids(path: &Path) -> Result<Vec<String>> {
@@ -637,10 +636,10 @@ fn apply_watch_registration(
         .cloned()
         .collect::<BTreeSet<_>>();
 
-    if registered_files != desired_files {
-        *watched_files = registered_files.clone();
+    if registered_files == desired_files {
+        watched_files.clone_from(desired_files);
     } else {
-        *watched_files = desired_files.clone();
+        watched_files.clone_from(registered_files);
     }
 
     added_watch_paths
@@ -681,7 +680,7 @@ fn test_notification(config: &Config) -> Result<()> {
     let event = crate::models::ApprovalEvent {
         message: "Test approval notification from codex-approval-watcher".into(),
         ..build_test_event(
-            env::current_dir().unwrap_or_else(|_| PathBuf::from(".")),
+            &env::current_dir().unwrap_or_else(|_| PathBuf::from(".")),
             "echo test",
         )
     };
@@ -694,7 +693,7 @@ fn doctor_notifications(config: &Config) -> Result<()> {
     let event = crate::models::ApprovalEvent {
         message: format!("Notification doctor probe {token}"),
         ..build_test_event(
-            env::current_dir().unwrap_or_else(|_| PathBuf::from(".")),
+            &env::current_dir().unwrap_or_else(|_| PathBuf::from(".")),
             "codex-approval-watcher doctor-notifications",
         )
     };
@@ -716,7 +715,7 @@ fn doctor_notifications(config: &Config) -> Result<()> {
     }
 }
 
-fn build_test_event(cwd: PathBuf, command: &str) -> crate::models::ApprovalEvent {
+fn build_test_event(cwd: &Path, command: &str) -> crate::models::ApprovalEvent {
     crate::models::ApprovalEvent {
         event: "approval.requested",
         session_id: "test-session".into(),
@@ -778,6 +777,12 @@ fn install_signal_handlers() {}
 
 #[cfg(test)]
 mod tests {
+    use std::{
+        collections::{BTreeMap, BTreeSet},
+        fs,
+        path::{Path, PathBuf},
+    };
+
     use super::{
         SessionFile, SessionTree, apply_watch_registration, build_test_event,
         default_config_path_from_home, ensure_default_config_exists, hydrate_missing_metadata,
@@ -786,11 +791,6 @@ mod tests {
     };
     use crate::config::{Config, HookConfig, NotificationsConfig};
     use crate::models::{FileState, PersistedState};
-    use std::{
-        collections::{BTreeMap, BTreeSet},
-        fs,
-        path::{Path, PathBuf},
-    };
 
     #[test]
     fn validate_config_accepts_notifications_without_hooks() {
@@ -1045,7 +1045,7 @@ mod tests {
 
     #[test]
     fn build_test_event_uses_requested_cwd() {
-        let event = build_test_event(PathBuf::from("/tmp/project-x"), "echo ok");
+        let event = build_test_event(Path::new("/tmp/project-x"), "echo ok");
 
         assert_eq!(event.event, "approval.requested");
         assert_eq!(event.cwd, "/tmp/project-x");
